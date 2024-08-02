@@ -1,10 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shopping_list_app/data/categories.dart';
 import 'package:shopping_list_app/models/category.dart';
 import 'package:shopping_list_app/models/grocery.dart';
 
 class NewItemScreen extends StatefulWidget {
-  const NewItemScreen({super.key});
+  const NewItemScreen({super.key, required this.groceriesLength});
+
+  final int groceriesLength;
 
   @override
   State<NewItemScreen> createState() {
@@ -17,16 +22,52 @@ class _NewItemScreenState extends State<NewItemScreen> {
   String _name = '';
   int _quantity = 1;
   Category _category = categories[Categories.vegetables]!;
+  bool _isSaving = false;
 
-  void _saveItem() {
+  Future<void> _saveItem() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      Navigator.of(context).pop(Grocery(
-        category: _category,
-        name: _name,
-        quantity: _quantity,
-        id: ValueKey(_name).value,
-      ));
+
+      setState(() {
+        _isSaving = true;
+      });
+
+      final url = Uri.https('flutter-prep-ac46b-default-rtdb.firebaseio.com',
+          'shopping-list.json');
+      var response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(
+          {
+            'name': _name,
+            'quantity': _quantity,
+            'category': _category.name,
+            'order': widget.groceriesLength,
+          },
+        ),
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      final Map<String, dynamic> responseData = json.decode(response.body);
+      // ignore: use_build_context_synchronously
+      Navigator.of(context).pop(
+        Grocery(
+          id: responseData['name'],
+          name: _name,
+          quantity: _quantity,
+          category: _category,
+          order: widget.groceriesLength,
+        ),
+      );
     }
   }
 
@@ -136,8 +177,16 @@ class _NewItemScreenState extends State<NewItemScreen> {
                     child: const Text('Reset'),
                   ),
                   ElevatedButton(
-                    onPressed: _saveItem,
-                    child: const Text('Add item'),
+                    onPressed: _isSaving ? null : _saveItem,
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text('Add item'),
                   ),
                 ],
               )
